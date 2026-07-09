@@ -1,0 +1,86 @@
+{
+  "name": "record-time",
+  "private": true,
+  "version": "1.0.0",
+  "description": "A local-first time tracking and habit journal.",
+  "author": "Record Time",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "dist": "npm run build && electron-builder --win nsis",
+    "start": "electron .",
+    "test": "vitest run --config vitest.config.ts",
+    "check:encoding": "node scripts/check-encoding.js",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "sql.js": "^1.14.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "better-sqlite3": "^12.10.0",
+    "concurrently": "^10.0.3",
+    "date-fns": "^4.4.0",
+    "electron": "39.2.7",
+    "electron-builder": "^26.15.2",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "jsdom": "^29.1.1",
+    "lucide-react": "^1.17.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "recharts": "^3.8.1",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12",
+    "vite-plugin-electron": "^1.0.4",
+    "vite-plugin-electron-renderer": "^1.0.0",
+    "vitest": "^4.1.8",
+    "wait-on": "^9.0.10"
+  },
+  "build": {
+    "appId": "com.recordtime.app",
+    "productName": "Record Time",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json",
+      "!node_modules/sql.js/.devcontainer/**",
+      "!node_modules/sql.js/*.md",
+      "!node_modules/sql.js/.eslintrc.js",
+      "!node_modules/sql.js/.jsdoc.config.json",
+      "!node_modules/sql.js/.nojekyll",
+      "!node_modules/sql.js/AUTHORS",
+      "!node_modules/sql.js/eslint.config.cjs",
+      "!node_modules/sql.js/logo.svg",
+      "!node_modules/sql.js/dist/*debug*",
+      "!node_modules/sql.js/dist/sql-asm*",
+      "!node_modules/sql.js/dist/sql-wasm-browser*",
+      "!node_modules/sql.js/dist/worker.*"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

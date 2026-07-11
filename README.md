@@ -1,73 +1,112 @@
-# React + TypeScript + Vite
+# Record Time
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> 把时间花在哪里，把成长留在哪里。
 
-Currently, two official plugins are available:
+Record Time 是一款本地优先的桌面时间记录与专注复盘工具。它把任务计时、习惯追踪、专注日志和数据统计放进同一个清爽的工作台，让每一次投入都有迹可循。
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+无论你在学习、写作、开发，还是推进一项长期计划，Record Time 都能帮你回答三个重要问题：**今天做了什么？时间花在了哪里？这段投入带来了什么？**
 
-## React Compiler
+## 为什么选择 Record Time
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **专注过程更轻盈**：在精简模式中快速开始、暂停或结束计时，不打断正在进行的工作。
+- **任务组织更清晰**：用分类整理日常任务，用项目拆分长期目标，也可以快速找到最近计时的事项。
+- **时间不只是一串数字**：结束专注时留下日志，让记录同时保存投入时长和当时的思考。
+- **习惯进度一目了然**：设置每日目标，查看今日完成度、累计投入与连续坚持天数。
+- **复盘有数据可依**：通过日、周、月统计，趋势图、热力图和任务排行，看清自己的节奏与重点。
+- **数据掌握在自己手中**：记录保存在本地，并支持备份以及 JSON、CSV、Markdown 格式导出。
 
-## Expanding the ESLint configuration
+## 核心功能
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### ⏱️ 专注计时
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- 一键开始、暂停、继续和结束计时
+- 精简窗口常驻桌面，减少操作干扰
+- 支持手动补录时间
+- 可编辑或删除已有记录
+- 每次专注都能附带日志，保留过程与成果
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### 🗂️ 任务、分类与项目
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- 创建和管理普通任务
+- 使用自定义名称与颜色划分任务分类
+- 创建项目，并在项目下继续拆分任务
+- 按最近使用、分类或项目切换查看方式
+- 完成后的任务可以归档，也可以随时恢复
+
+### ✅ 习惯追踪
+
+- 将任务设置为每日习惯
+- 自定义每日目标分钟数
+- 实时查看今日进度与剩余时间
+- 统计今日完成情况和连续坚持天数
+
+### 📊 数据仪表盘
+
+- 查看今日、本周和本月的专注时长
+- 通过饼图了解当天时间分布
+- 通过周趋势和月度/年度热力图观察投入节奏
+- 按任务查看累计时长、记录次数、平均单次时长和最近 30 天趋势
+
+### 📝 时间线与复盘
+
+- 按日期回顾全部专注记录
+- 搜索任务、分类和日志内容
+- 在归档区查看已完成事项的完整投入历史
+- 为归档任务留下复盘总结，让完成不止于“关闭任务”
+
+### 🔒 本地存储与导出
+
+- 使用本地 SQLite 数据库存储记录
+- 支持立即备份数据库
+- 支持导出为 JSON、CSV 或 Markdown
+- 无需账号，也不依赖云端服务
+
+## 适合谁
+
+- 想知道每天时间究竟花在哪里的学生与职场人
+- 需要记录项目投入和工作日志的开发者、设计师与自由职业者
+- 正在培养阅读、运动、写作等长期习惯的人
+- 重视数据隐私，希望记录保留在本地的用户
+
+## 开发与运行
+
+项目目前面向 Windows 桌面端，基于 Electron、React、TypeScript 和 Vite 构建。
+
+### 环境要求
+
+- Node.js
+- npm
+
+### 本地运行
+
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 常用命令
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build           # 构建应用
+npm test                # 运行测试
+npm run lint            # 检查代码规范
+npm run check:encoding  # 检查文件编码
+npm run dist            # 生成 Windows 安装包
 ```
+
+## 技术栈
+
+- Electron
+- React
+- TypeScript
+- Vite
+- SQLite（sql.js）
+- Recharts
+
+## 数据说明
+
+Record Time 采用本地优先设计。任务、计时和日志数据默认保存在你的电脑中；在迁移设备或进行重要修改前，建议先使用应用内的“立即备份”功能保存一份副本。
+
+---
+
+**认真记录时间，不是为了追赶每一分钟，而是为了更清楚地选择下一分钟。**

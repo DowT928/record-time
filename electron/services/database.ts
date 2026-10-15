@@ -135,6 +135,7 @@ function migrate(db: Db): void {
       category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
       parent_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
       kind TEXT NOT NULL CHECK(kind IN ('task', 'project', 'project_task')),
       color TEXT NOT NULL DEFAULT '#3f6f68',
       archived INTEGER NOT NULL DEFAULT 0,
@@ -181,6 +182,33 @@ function migrate(db: Db): void {
     CREATE INDEX IF NOT EXISTS idx_time_entries_started ON time_entries(started_at);
   `)
   ensureColumn(db, 'tasks', 'archive_review', "TEXT NOT NULL DEFAULT ''")
+  ensureColumn(db, 'tasks', 'description', "TEXT NOT NULL DEFAULT ''")
+  db.prepare(`
+    UPDATE tasks
+    SET
+      category_id = CASE
+        WHEN kind = 'project' OR (
+          parent_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM tasks parent WHERE parent.id = tasks.parent_id AND parent.kind = 'project'
+          )
+        ) THEN NULL
+        ELSE category_id
+      END,
+      parent_id = CASE
+        WHEN kind = 'project' THEN NULL
+        WHEN parent_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM tasks parent WHERE parent.id = tasks.parent_id AND parent.kind = 'project'
+        ) THEN parent_id
+        ELSE NULL
+      END,
+      kind = CASE
+        WHEN kind = 'project' THEN 'project'
+        WHEN parent_id IS NOT NULL AND EXISTS (
+          SELECT 1 FROM tasks parent WHERE parent.id = tasks.parent_id AND parent.kind = 'project'
+        ) THEN 'project_task'
+        ELSE 'task'
+      END
+  `).run()
 }
 
 function ensureColumn(db: Db, table: string, column: string, definition: string): void {
@@ -205,15 +233,14 @@ function seedDefaults(db: Db): void {
   const taskCount = db.prepare('SELECT COUNT(*) AS count FROM tasks').get() as { count: number }
   if (taskCount.count === 0) {
     const learning = db.prepare('SELECT id FROM categories WHERE name = ?').get('学习') as { id: number }
-    const dev = db.prepare('SELECT id FROM categories WHERE name = ?').get('开发') as { id: number }
     const insertTask = db.prepare(`
       INSERT INTO tasks (category_id, parent_id, name, kind, color, habit_target_minutes, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
     insertTask.run(learning.id, null, '算法刷题', 'task', '#3f6f68', 30, now, now)
     insertTask.run(learning.id, null, '阅读', 'task', '#6c6f2f', null, now, now)
-    const project = insertTask.run(dev.id, null, 'Focus Journal', 'project', '#8a5a44', null, now, now)
-    insertTask.run(dev.id, Number(project.lastInsertRowid), 'MVP 开发', 'project_task', '#8a5a44', null, now, now)
+    const project = insertTask.run(null, null, 'Focus Journal', 'project', '#8a5a44', null, now, now)
+    insertTask.run(null, Number(project.lastInsertRowid), 'MVP 开发', 'project_task', '#8a5a44', null, now, now)
   }
 
   const defaults = new Map<string, string>([

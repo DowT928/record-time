@@ -1056,8 +1056,44 @@ nav button:hover,
 
 .entry-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
+  gap: 8px 12px;
+}
+
+.entry-item.has-actions {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.entry-item .entry-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.entry-item .entry-main strong {
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.entry-item .entry-main span {
+  line-height: 1.45;
+}
+
+.entry-item .entry-description {
+  grid-column: 1 / -1;
+  margin: 1px 0 0;
+  padding: 9px 11px;
+  border: 1px solid #e2eeee;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #27434d;
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .timeline-filter {
@@ -1459,6 +1495,90 @@ nav button:hover,
 
 .dialog-modal.compact {
   width: min(500px, calc(100vw - 48px));
+}
+
+.task-detail-modal {
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+}
+
+.task-detail-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.task-detail-fields label {
+  display: grid;
+  gap: 6px;
+}
+
+.task-detail-fields label > span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.task-detail-value {
+  min-height: 38px;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 6px;
+  background: var(--paper-soft);
+  color: var(--ink);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-detail-value.is-empty {
+  color: var(--muted);
+}
+
+.task-detail-fields.editing input:not(:disabled),
+.task-detail-fields.editing textarea:not(:disabled),
+.task-detail-fields.editing select:not(:disabled) {
+  border-color: var(--green);
+  background: #fbfefe;
+  box-shadow: 0 0 0 2px rgba(63, 111, 104, 0.1);
+}
+
+.task-detail-fields.editing textarea {
+  min-height: 82px;
+  line-height: 1.55;
+}
+
+.task-detail-description {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.task-detail-summary,
+.task-detail-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.task-detail-summary {
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--paper-soft);
+  border-radius: 8px;
+}
+
+.task-detail-summary strong {
+  font-size: 22px;
+}
+
+.task-detail-summary span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.task-detail-footer {
+  justify-content: flex-end;
+  padding-top: 4px;
 }
 
 .dialog-header {

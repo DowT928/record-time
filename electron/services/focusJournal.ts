@@ -53,6 +53,7 @@ type TaskRow = {
   category_id: number | null
   parent_id: number | null
   name: string
+  description: string
   kind: 'task' | 'project' | 'project_task'
   color: string
   archived: number
@@ -104,8 +105,24 @@ export class FocusJournalService {
     const tasks = this.db.prepare(`
       SELECT
         t.*,
-        COALESCE(SUM(e.duration_seconds), 0) AS total_seconds,
-        MAX(e.started_at) AS last_worked_at
+        CASE
+          WHEN t.kind = 'project' THEN COALESCE((
+            SELECT SUM(child_entry.duration_seconds)
+            FROM tasks child
+            JOIN time_entries child_entry ON child_entry.task_id = child.id
+            WHERE child.parent_id = t.id
+          ), 0)
+          ELSE COALESCE(SUM(e.duration_seconds), 0)
+        END AS total_seconds,
+        CASE
+          WHEN t.kind = 'project' THEN (
+            SELECT MAX(child_entry.started_at)
+            FROM tasks child
+            JOIN time_entries child_entry ON child_entry.task_id = child.id
+            WHERE child.parent_id = t.id
+          )
+          ELSE MAX(e.started_at)
+        END AS last_worked_at
       FROM tasks t
       LEFT JOIN time_entries e ON e.task_id = t.id
       GROUP BY t.id
@@ -155,14 +172,29 @@ export class FocusJournalService {
     const now = nowIso()
     const name = input.name.trim()
     if (!name) throw new Error('任务名称不能为空')
+    let kind: Task['kind'] = input.kind
+    let categoryId = input.categoryId ?? null
+    let parentId = input.parentId ?? null
+    if (kind === 'project') {
+      categoryId = null
+      parentId = null
+    } else if (parentId !== null) {
+      const parent = this.getTask(parentId)
+      if (parent.kind !== 'project') throw new Error('项目任务必须归属于一个项目')
+      kind = 'project_task'
+      categoryId = null
+    } else {
+      kind = 'task'
+    }
     const result = this.db.prepare(`
-      INSERT INTO tasks (category_id, parent_id, name, kind, color, habit_target_minutes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO tasks (category_id, parent_id, name, description, kind, color, habit_target_minutes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      input.categoryId ?? null,
-      input.parentId ?? null,
+      categoryId,
+      parentId,
       name,
-      input.kind,
+      input.description?.trim() ?? '',
+      kind,
       input.color ?? '#3f6f68',
       input.habitTargetMinutes ?? null,
       now,
@@ -176,14 +208,31 @@ export class FocusJournalService {
   updateTask(input: UpdateTaskInput): Task {
     const current = this.getTask(input.id)
     const now = nowIso()
+    let categoryId = input.categoryId === undefined ? current.categoryId : input.categoryId
+    let parentId = input.parentId === undefined ? current.parentId : input.parentId
+    let kind = current.kind
+    if (current.kind === 'project') {
+      categoryId = null
+      parentId = null
+    } else if (parentId !== null) {
+      if (parentId === input.id) throw new Error('项目不能归属于自身')
+      const parent = this.getTask(parentId)
+      if (parent.kind !== 'project') throw new Error('任务只能归属于项目')
+      categoryId = null
+      kind = 'project_task'
+    } else {
+      kind = 'task'
+    }
     this.db.prepare(`
       UPDATE tasks
-      SET name = ?, category_id = ?, parent_id = ?, color = ?, habit_target_minutes = ?, archive_review = ?, updated_at = ?
+      SET name = ?, description = ?, category_id = ?, parent_id = ?, kind = ?, color = ?, habit_target_minutes = ?, archive_review = ?, updated_at = ?
       WHERE id = ?
     `).run(
       input.name?.trim() || current.name,
-      input.categoryId === undefined ? current.categoryId : input.categoryId,
-      input.parentId === undefined ? current.parentId : input.parentId,
+      input.description === undefined ? current.description ?? '' : input.description.trim(),
+      categoryId,
+      parentId,
+      kind,
       input.color ?? current.color,
       input.habitTargetMinutes === undefined ? current.habitTargetMinutes : input.habitTargetMinutes,
       input.archiveReview === undefined ? current.archiveReview : input.archiveReview.trim(),
@@ -241,7 +290,8 @@ export class FocusJournalService {
   }
 
   startTimer(taskId: number): TimerSession {
-    this.getTask(taskId)
+    const task = this.getTask(taskId)
+    if (task.kind === 'project') throw new Error('项目不能直接开始计时，请选择项目任务')
     const now = nowIso()
     const current = this.getCurrentTimer()
     if (current?.status === 'running') {
@@ -313,7 +363,8 @@ export class FocusJournalService {
   }
 
   manualEntry(input: ManualEntryInput): TimeEntry {
-    this.getTask(input.taskId)
+    const task = this.getTask(input.taskId)
+    if (task.kind === 'project') throw new Error('项目不能直接补录时间，请选择项目任务')
     const total = durationSeconds(input.startedAt, input.endedAt)
     if (total <= 0) throw new Error('End time must be after start time')
     const entry = this.insertTimeEntry({
@@ -354,9 +405,12 @@ export class FocusJournalService {
 
   entriesByTask(taskId: number): TimeEntry[] {
     const rows = this.db.prepare(entrySelect(`
-      WHERE e.task_id = ?
+      WHERE e.task_id = ? OR EXISTS (
+        SELECT 1 FROM tasks project
+        WHERE project.id = ? AND project.kind = 'project' AND t.parent_id = project.id
+      )
       ORDER BY e.started_at DESC
-    `)).all(taskId) as EntryRow[]
+    `)).all(taskId, taskId) as EntryRow[]
     return rows.map(mapEntry)
   }
 
@@ -496,8 +550,24 @@ export class FocusJournalService {
     const row = this.db.prepare(`
       SELECT
         t.*,
-        COALESCE(SUM(e.duration_seconds), 0) AS total_seconds,
-        MAX(e.started_at) AS last_worked_at
+        CASE
+          WHEN t.kind = 'project' THEN COALESCE((
+            SELECT SUM(child_entry.duration_seconds)
+            FROM tasks child
+            JOIN time_entries child_entry ON child_entry.task_id = child.id
+            WHERE child.parent_id = t.id
+          ), 0)
+          ELSE COALESCE(SUM(e.duration_seconds), 0)
+        END AS total_seconds,
+        CASE
+          WHEN t.kind = 'project' THEN (
+            SELECT MAX(child_entry.started_at)
+            FROM tasks child
+            JOIN time_entries child_entry ON child_entry.task_id = child.id
+            WHERE child.parent_id = t.id
+          )
+          ELSE MAX(e.started_at)
+        END AS last_worked_at
       FROM tasks t
       LEFT JOIN time_entries e ON e.task_id = t.id
       WHERE t.id = ?
@@ -593,6 +663,7 @@ function mapTask(row: TaskRow): Task {
     categoryId: row.category_id,
     parentId: row.parent_id,
     name: row.name,
+    description: row.description ?? '',
     kind: row.kind,
     color: row.color,
     archived: Boolean(row.archived),

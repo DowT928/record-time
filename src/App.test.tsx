@@ -111,6 +111,7 @@ beforeEach(() => {
   vi.mocked(window.focusJournal.logs.timeline).mockResolvedValue([])
   vi.mocked(window.focusJournal.logs.search).mockReset()
   vi.mocked(window.focusJournal.logs.byTask).mockReset()
+  vi.mocked(window.focusJournal.logs.byTask).mockResolvedValue([])
   vi.mocked(window.focusJournal.logs.update).mockReset()
   vi.mocked(window.focusJournal.logs.remove).mockReset()
   vi.mocked(window.focusJournal.stats.dashboard).mockResolvedValue(emptyStats)
@@ -239,6 +240,49 @@ it('opens the task dialog with its category selected', async () => {
   fireEvent.click(await screen.findByTitle('在 学习 中新建任务'))
 
   expect(screen.getByRole('combobox')).toHaveValue('7')
+})
+
+it('creates a project without a category selector', async () => {
+  render(<App />)
+  fireEvent.click(screen.getByTitle('展开完整界面'))
+  fireEvent.click(screen.getByRole('button', { name: '按项目' }))
+  fireEvent.click(screen.getByRole('button', { name: '新建项目' }))
+
+  expect(screen.getByPlaceholderText('项目名称')).toBeInTheDocument()
+  expect(screen.getByPlaceholderText('项目描述，可空')).toBeInTheDocument()
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+})
+
+it('shows task description and recent records without repeating the task name', async () => {
+  vi.mocked(window.focusJournal.tasks.list).mockResolvedValue({ categories: [], tasks: [focusTask] })
+  vi.mocked(window.focusJournal.tasks.recent).mockResolvedValue([focusTask])
+  vi.mocked(window.focusJournal.logs.byTask).mockResolvedValue([{
+    id: 601,
+    taskId: focusTask.id,
+    taskName: focusTask.name,
+    categoryName: null,
+    startedAt: '2026-06-30T01:00:00.000Z',
+    endedAt: '2026-06-30T01:30:00.000Z',
+    durationSeconds: 1800,
+    log: 'Wrote a clear summary',
+    isManual: false,
+    createdAt: '2026-06-30T01:30:00.000Z',
+  }])
+
+  render(<App />)
+  fireEvent.click(screen.getByTitle('展开完整界面'))
+  fireEvent.click(await screen.findByTitle('查看详情'))
+
+  const detail = await screen.findByText('Wrote a clear summary')
+  const dialog = detail.closest('.task-detail-modal')!
+  expect(dialog.querySelector('h2')).toHaveTextContent(focusTask.name)
+  expect(dialog.querySelector('[aria-label="任务名称"]')).toBeNull()
+  expect(dialog.querySelector('[aria-label="任务归属"]')).toBeNull()
+  expect(dialog.querySelector('.task-detail-value')).toHaveTextContent('暂无描述')
+  expect(dialog.querySelector('.entry-item strong')).toBeNull()
+  expect(dialog.querySelector('.entry-description')).toHaveTextContent('Wrote a clear summary')
+  expect(dialog.querySelector('.entry-actions')).toBeNull()
+  expect(window.focusJournal.logs.byTask).toHaveBeenCalledWith(focusTask.id)
 })
 
 it('shows the create project action only in the project view', async () => {
@@ -521,7 +565,7 @@ it('hides archived tasks from category and project task views', async () => {
 })
 
 
-it('edits a task name, category, and project from the task row', async () => {
+it('keeps three actions on task rows and edits task details in the same modal', async () => {
   vi.mocked(window.focusJournal.tasks.list).mockResolvedValue({
     categories: [
       { id: 1, name: '工作', color: '#3f6f68', archived: false, createdAt: '2026-06-19T00:00:00.000Z', updatedAt: '2026-06-19T00:00:00.000Z' },
@@ -529,18 +573,19 @@ it('edits a task name, category, and project from the task row', async () => {
     ],
     tasks: [
       { id: 10, categoryId: 1, parentId: null, name: '旧任务', kind: 'task', color: '#3f6f68', archived: false, archiveReview: '', habitTargetMinutes: null, totalSeconds: 0, lastWorkedAt: null, createdAt: '2026-06-19T00:00:00.000Z', updatedAt: '2026-06-19T00:00:00.000Z' },
-      { id: 20, categoryId: 2, parentId: null, name: '学习项目', kind: 'project', color: '#3f6f68', archived: false, archiveReview: '', habitTargetMinutes: null, totalSeconds: 0, lastWorkedAt: null, createdAt: '2026-06-19T00:00:00.000Z', updatedAt: '2026-06-19T00:00:00.000Z' },
+      { id: 20, categoryId: null, parentId: null, name: '学习项目', kind: 'project', color: '#3f6f68', archived: false, archiveReview: '', habitTargetMinutes: null, totalSeconds: 0, lastWorkedAt: null, createdAt: '2026-06-19T00:00:00.000Z', updatedAt: '2026-06-19T00:00:00.000Z' },
     ],
   })
   vi.mocked(window.focusJournal.tasks.recent).mockResolvedValue([
     { id: 10, categoryId: 1, parentId: null, name: '旧任务', kind: 'task', color: '#3f6f68', archived: false, archiveReview: '', habitTargetMinutes: null, totalSeconds: 0, lastWorkedAt: null, createdAt: '2026-06-19T00:00:00.000Z', updatedAt: '2026-06-19T00:00:00.000Z' },
   ])
+  vi.mocked(window.focusJournal.logs.byTask).mockResolvedValue([])
   vi.mocked(window.focusJournal.tasks.updateTask).mockResolvedValue({
     id: 10,
-    categoryId: 2,
+    categoryId: null,
     parentId: 20,
     name: '新任务',
-    kind: 'task',
+    kind: 'project_task',
     color: '#3f6f68',
     archived: false,
     archiveReview: '',
@@ -554,17 +599,31 @@ it('edits a task name, category, and project from the task row', async () => {
   render(<App />)
   await waitFor(() => expect(screen.getByText('旧任务')).toBeInTheDocument())
   fireEvent.click(screen.getByTitle('展开完整界面'))
-  fireEvent.click(screen.getByTitle('编辑名称'))
+  const taskRow = screen.getByText('旧任务').closest('.task-item')!
+  expect(taskRow.querySelectorAll('.item-actions button')).toHaveLength(3)
+  expect(taskRow.querySelector('[title="编辑名称"]')).toBeNull()
+  expect(taskRow.querySelector('[title="归档"]')).toBeNull()
+  expect(taskRow.querySelector('[title="删除"]')).toBeNull()
+  fireEvent.click(taskRow.querySelector('[title="查看详情"]')!)
 
-  fireEvent.change(screen.getByPlaceholderText('任务名称'), { target: { value: '新任务' } })
-  const selects = screen.getAllByRole('combobox')
-  fireEvent.change(selects[1], { target: { value: '20' } })
+  const dialog = screen.getByText('归属').closest('.task-detail-modal')!
+  expect(dialog.querySelector('[aria-label="任务名称"]')).toBeNull()
+  expect(dialog.querySelector('[aria-label="任务归属"]')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: '编辑' }))
+  expect(document.querySelectorAll('.task-detail-modal')).toHaveLength(1)
+  expect(document.querySelector('.task-detail-modal')).toBe(dialog)
+  expect(screen.getByRole('textbox', { name: '任务名称' })).toBeEnabled()
+  expect(screen.getByRole('combobox', { name: '任务归属' })).toBeEnabled()
+
+  fireEvent.change(screen.getByRole('textbox', { name: '任务名称' }), { target: { value: '新任务' } })
+  fireEvent.change(screen.getByRole('combobox', { name: '任务归属' }), { target: { value: 'project:20' } })
   fireEvent.click(screen.getByRole('button', { name: '保存修改' }))
 
   await waitFor(() => expect(window.focusJournal.tasks.updateTask).toHaveBeenCalledWith({
     id: 10,
     name: '新任务',
-    categoryId: 2,
+    description: '',
+    categoryId: null,
     parentId: 20,
   }))
 })

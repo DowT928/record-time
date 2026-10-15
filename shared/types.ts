@@ -17,6 +17,7 @@ export interface Task {
   categoryId: number | null
   parentId: number | null
   name: string
+  description?: string
   kind: TaskKind
   color: string
   archived: boolean
@@ -65,6 +66,7 @@ export interface UpdateCategoryInput {
 
 export interface CreateTaskInput {
   name: string
+  description?: string
   kind: TaskKind
   categoryId?: number | null
   parentId?: number | null
@@ -75,6 +77,7 @@ export interface CreateTaskInput {
 export interface UpdateTaskInput {
   id: number
   name?: string
+  description?: string
   categoryId?: number | null
   parentId?: number | null
   color?: string

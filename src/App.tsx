@@ -138,11 +138,14 @@ function FocusJournalApp() {
   const [entryStart, setEntryStart] = useState('')
   const [entryEnd, setEntryEnd] = useState('')
   const [entryLog, setEntryLog] = useState('')
-  const [editingTask, setEditingTask] = useState<Task | null>(null)
-  const [taskEditName, setTaskEditName] = useState('')
-  const [taskEditCategoryId, setTaskEditCategoryId] = useState<number | ''>('')
-  const [taskEditProjectId, setTaskEditProjectId] = useState<number | ''>('')
+  const [detailTask, setDetailTask] = useState<Task | null>(null)
+  const [detailEntries, setDetailEntries] = useState<TimeEntry[]>([])
+  const [detailEditing, setDetailEditing] = useState(false)
+  const [detailName, setDetailName] = useState('')
+  const [detailDescription, setDetailDescription] = useState('')
+  const [detailAssignment, setDetailAssignment] = useState('uncategorized')
   const [taskName, setTaskName] = useState('')
+  const [taskDescription, setTaskDescription] = useState('')
   const [categoryId, setCategoryId] = useState<number | ''>('')
   const [habitMinutes, setHabitMinutes] = useState('')
   const [categoryName, setCategoryName] = useState('')
@@ -256,6 +259,7 @@ function FocusJournalApp() {
     const created = await run(
       () => api.tasks.createTask({
         name: taskName,
+        description: taskDescription,
         kind: 'task',
         categoryId: categoryId === '' ? null : Number(categoryId),
         parentId: null,
@@ -265,6 +269,7 @@ function FocusJournalApp() {
     )
     if (!created) return
     setTaskName('')
+    setTaskDescription('')
     setCreateMode(null)
   }
 
@@ -276,6 +281,7 @@ function FocusJournalApp() {
     const created = await run(
       () => api.tasks.createTask({
         name: taskName,
+        description: taskDescription,
         kind: 'task',
         categoryId: categoryId === '' ? null : Number(categoryId),
         parentId: null,
@@ -285,6 +291,7 @@ function FocusJournalApp() {
     )
     if (!created) return
     setTaskName('')
+    setTaskDescription('')
     setHabitMinutes('')
     setCreateMode(null)
   }
@@ -294,8 +301,9 @@ function FocusJournalApp() {
     const created = await run(
       () => api.tasks.createTask({
         name: taskName,
+        description: taskDescription,
         kind: 'project_task',
-        categoryId: projectTaskParent.categoryId,
+        categoryId: null,
         parentId: projectTaskParent.id,
         habitTargetMinutes: habitMinutes ? Number(habitMinutes) : null,
       }),
@@ -303,6 +311,7 @@ function FocusJournalApp() {
     )
     if (!created) return
     setTaskName('')
+    setTaskDescription('')
     setHabitMinutes('')
     setProjectTaskParent(null)
     setCreateMode(null)
@@ -324,8 +333,8 @@ function FocusJournalApp() {
     const created = await run(
       () => api.tasks.createTask({
         name: taskName,
+        description: taskDescription,
         kind: 'project',
-        categoryId: categoryId === '' ? null : Number(categoryId),
         parentId: null,
         habitTargetMinutes: null,
       }),
@@ -333,6 +342,7 @@ function FocusJournalApp() {
     )
     if (!created) return
     setTaskName('')
+    setTaskDescription('')
     setCreateMode(null)
   }
 
@@ -358,7 +368,10 @@ function FocusJournalApp() {
       message: '删除后任务及其记录不可恢复。',
       confirmLabel: '删除',
       tone: 'danger',
-      onConfirm: () => run(() => api.tasks.remove(task.id)),
+      onConfirm: async () => {
+        const removed = await run(() => api.tasks.remove(task.id))
+        if (removed && detailTask?.id === task.id) setDetailTask(null)
+      },
     })
   }
 
@@ -384,6 +397,7 @@ function FocusJournalApp() {
 
   function openProjectTaskDialog(project: Task) {
     setTaskName('')
+    setTaskDescription('')
     setHabitMinutes('')
     setProjectTaskParent(project)
     setCreateMode('projectTask')
@@ -391,6 +405,7 @@ function FocusJournalApp() {
 
   function openTaskDialog(category: number | null) {
     setTaskName('')
+    setTaskDescription('')
     setCategoryId(category ?? '')
     setProjectTaskParent(null)
     setCreateMode('task')
@@ -398,6 +413,7 @@ function FocusJournalApp() {
 
   function openProjectDialog() {
     setTaskName('')
+    setTaskDescription('')
     setCategoryId('')
     setCreateMode('project')
   }
@@ -448,35 +464,49 @@ function FocusJournalApp() {
     })
   }
 
-  function openTaskEditor(task: Task) {
-    setEditingTask(task)
-    setTaskEditName(task.name)
-    setTaskEditCategoryId(task.categoryId ?? '')
-    setTaskEditProjectId(task.parentId ?? '')
+  async function openTaskDetails(task: Task) {
+    setDetailTask(task)
+    setDetailEntries([])
+    setDetailEditing(false)
+    setDetailName(task.name)
+    setDetailDescription(task.description ?? '')
+    setDetailAssignment(task.parentId !== null
+      ? `project:${task.parentId}`
+      : task.categoryId !== null
+        ? `category:${task.categoryId}`
+        : 'uncategorized')
+    try {
+      setDetailEntries(await api.logs.byTask(task.id))
+    } catch (error) {
+      console.error(error)
+      showNotice('读取任务记录失败', 'error')
+    }
   }
 
-  function updateTaskEditProject(value: string) {
-    const projectId = value ? Number(value) : ''
-    setTaskEditProjectId(projectId)
-    if (projectId === '') return
-    const project = tasks.find((task) => task.id === projectId)
-    setTaskEditCategoryId(project?.categoryId ?? '')
-  }
-
-  async function updateEditingTask() {
-    if (!editingTask) return
-    const selectedProject = taskEditProjectId === '' ? null : tasks.find((task) => task.id === taskEditProjectId) ?? null
-    const nextCategoryId = selectedProject ? selectedProject.categoryId : taskEditCategoryId === '' ? null : taskEditCategoryId
-    const updated = await run(
-      () => api.tasks.updateTask({
-        id: editingTask.id,
-        name: taskEditName,
-        categoryId: nextCategoryId,
-        parentId: editingTask.kind === 'project' ? null : taskEditProjectId === '' ? null : taskEditProjectId,
-      }),
-      '任务已更新',
-    )
-    if (updated) setEditingTask(null)
+  async function saveTaskDetails() {
+    if (!detailTask) return
+    const [assignmentType, assignmentId] = detailAssignment.split(':')
+    const parentId = detailTask.kind === 'project' || assignmentType !== 'project' ? null : Number(assignmentId)
+    const nextCategoryId = detailTask.kind === 'project' || assignmentType !== 'category' ? null : Number(assignmentId)
+    const updated = await run(() => api.tasks.updateTask({
+      id: detailTask.id,
+      name: detailName,
+      description: detailDescription,
+      categoryId: nextCategoryId,
+      parentId,
+    }), '任务已更新')
+    if (!updated) return
+    const nextTask: Task = {
+      ...detailTask,
+      name: detailName.trim() || detailTask.name,
+      description: detailDescription.trim(),
+      categoryId: nextCategoryId,
+      parentId,
+      kind: detailTask.kind === 'project' ? 'project' : parentId === null ? 'task' : 'project_task',
+    }
+    setDetailTask(nextTask)
+    setDetailEditing(false)
+    setDetailEntries(await api.logs.byTask(nextTask.id))
   }
 
   async function search() {
@@ -652,6 +682,8 @@ function FocusJournalApp() {
                 openTaskDialog(null)
               }}><Plus size={16} /> 新建任务</button>
               <button onClick={() => {
+                setTaskName('')
+                setTaskDescription('')
                 setCategoryId('')
                 setHabitMinutes('')
                 setCreateMode('habit')
@@ -694,10 +726,7 @@ function FocusJournalApp() {
                   tasks={(recent.length ? recent : runnableTasks).filter((task) => !task.archived)}
                   onStart={startTask}
                   onManualEntry={(task) => { setManualTaskId(task.id); setManualOpen(true) }}
-                  onRename={openTaskEditor}
-                  onRemove={confirmTaskRemoval}
-                  onArchive={(id) => run(() => api.tasks.archive(id))}
-                  onRestore={(id) => run(() => api.tasks.restore(id))}
+                  onDetails={(task) => void openTaskDetails(task)}
                 />
               ) : taskViewMode === 'category' ? (
                 <CategorizedTaskList
@@ -705,24 +734,18 @@ function FocusJournalApp() {
                   categories={categories}
                   onStart={startTask}
                   onManualEntry={(task) => { setManualTaskId(task.id); setManualOpen(true) }}
-                  onRename={openTaskEditor}
-                  onRemove={confirmTaskRemoval}
+                  onDetails={(task) => void openTaskDetails(task)}
                   onCreateTask={openTaskDialog}
                   onUpdateCategory={updateCategory}
                   onRemoveCategory={removeCategory}
-                  onArchive={(id) => run(() => api.tasks.archive(id))}
-                  onRestore={(id) => run(() => api.tasks.restore(id))}
                 />
               ) : (
                 <ProjectTaskList
                   tasks={tasks}
                   onStart={startTask}
                   onManualEntry={(task) => { setManualTaskId(task.id); setManualOpen(true) }}
-                  onRename={openTaskEditor}
-                  onRemove={confirmTaskRemoval}
+                  onDetails={(task) => void openTaskDetails(task)}
                   onCreateProjectTask={openProjectTaskDialog}
-                  onArchive={(id) => run(() => api.tasks.archive(id))}
-                  onRestore={(id) => run(() => api.tasks.restore(id))}
                 />
               )}
             </div>
@@ -794,10 +817,7 @@ function FocusJournalApp() {
             </div>
             <div className="form-grid">
               <input autoFocus value={taskName} onChange={(event) => setTaskName(event.target.value)} placeholder="项目名称" />
-              <select value={categoryId} onChange={(event) => setCategoryId(event.target.value ? Number(event.target.value) : '')}>
-                <option value="">不选择分类</option>
-                {categories.filter((category) => !category.archived).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-              </select>
+              <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="项目描述，可空" />
               <button onClick={createProject}><Folder size={16} /> 新建项目</button>
             </div>
           </div>
@@ -816,6 +836,7 @@ function FocusJournalApp() {
             </div>
             <div className="form-grid">
               <input autoFocus value={taskName} onChange={(event) => setTaskName(event.target.value)} placeholder="任务名称" />
+              <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="任务描述，可空" />
               <select value={categoryId} onChange={(event) => setCategoryId(event.target.value ? Number(event.target.value) : '')}>
                 <option value="">不选择分类</option>
                 {categories.filter((category) => !category.archived).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
@@ -838,6 +859,7 @@ function FocusJournalApp() {
             </div>
             <div className="form-grid">
               <input autoFocus value={taskName} onChange={(event) => setTaskName(event.target.value)} placeholder="习惯名称" />
+              <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="习惯描述，可空" />
               <select value={categoryId} onChange={(event) => setCategoryId(event.target.value ? Number(event.target.value) : '')}>
                 <option value="">不选择分类</option>
                 {categories.filter((category) => !category.archived).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
@@ -861,6 +883,7 @@ function FocusJournalApp() {
             </div>
             <div className="form-grid">
               <input autoFocus value={taskName} onChange={(event) => setTaskName(event.target.value)} placeholder="项目任务名称" />
+              <textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="项目任务描述，可空" />
               <input value={habitMinutes} onChange={(event) => setHabitMinutes(event.target.value)} placeholder="每日目标分钟，可空" type="number" min="1" />
               <button onClick={createProjectTask}><Plus size={16} /> 新建项目任务</button>
             </div>
@@ -912,37 +935,99 @@ function FocusJournalApp() {
         </div>
       )}
 
-      {editingTask && (
-        <div className="modal-backdrop" onClick={(event) => event.target === event.currentTarget && setEditingTask(null)}>
-          <div className="dialog-modal">
+      {detailTask && (
+        <div className="modal-backdrop" onClick={(event) => event.target === event.currentTarget && setDetailTask(null)}>
+          <div className="dialog-modal task-detail-modal">
             <div className="dialog-header">
               <div>
-                <span className="eyebrow">编辑任务</span>
-                <h2>{editingTask.name}</h2>
+                <span className="eyebrow">{detailEditing ? '编辑' : taskTypeLabel(detailTask)}</span>
+                <h2>{detailTask.name}</h2>
               </div>
-              <button onClick={() => setEditingTask(null)}>关闭</button>
+              <button onClick={() => setDetailTask(null)}>关闭</button>
             </div>
-            <div className="form-grid">
-              <input autoFocus value={taskEditName} onChange={(event) => setTaskEditName(event.target.value)} placeholder="任务名称" />
-              <select
-                value={taskEditCategoryId}
-                disabled={editingTask.kind !== 'project' && taskEditProjectId !== ''}
-                onChange={(event) => setTaskEditCategoryId(event.target.value ? Number(event.target.value) : '')}
-              >
-                <option value="">不选择分类</option>
-                {categories.filter((category) => !category.archived).map((category) => (
-                  <option key={category.id} value={category.id}>{category.name}</option>
-                ))}
-              </select>
-              {editingTask.kind !== 'project' && (
-                <select value={taskEditProjectId} onChange={(event) => updateTaskEditProject(event.target.value)}>
-                  <option value="">不放入项目</option>
-                  {tasks.filter((task) => task.kind === 'project' && !task.archived).map((project) => (
-                    <option key={project.id} value={project.id}>{project.name}</option>
-                  ))}
-                </select>
+            <div className={`task-detail-fields${detailEditing ? ' editing' : ''}`}>
+              {detailEditing && (
+                <label>
+                  <span>名称</span>
+                  <input aria-label="任务名称" autoFocus value={detailName} onChange={(event) => setDetailName(event.target.value)} />
+                </label>
               )}
-              <button onClick={updateEditingTask}><Check size={16} /> 保存修改</button>
+              <label>
+                <span>描述</span>
+                {detailEditing ? (
+                  <textarea aria-label="任务描述" value={detailDescription} onChange={(event) => setDetailDescription(event.target.value)} placeholder="暂无描述" />
+                ) : (
+                  <p className={`task-detail-value${detailTask.description ? '' : ' is-empty'}`}>
+                    {detailTask.description || '暂无描述'}
+                  </p>
+                )}
+              </label>
+              {detailTask.kind !== 'project' && (
+                <label>
+                  <span>归属</span>
+                  {detailEditing ? (
+                    <select aria-label="任务归属" value={detailAssignment} onChange={(event) => setDetailAssignment(event.target.value)}>
+                      <option value="uncategorized">未分类</option>
+                      {categories.filter((category) => !category.archived || category.id === detailTask.categoryId).map((category) => (
+                        <option key={`detail-category-${category.id}`} value={`category:${category.id}`}>分类：{category.name}</option>
+                      ))}
+                      {tasks.filter((task) => task.kind === 'project' && (!task.archived || task.id === detailTask.parentId) && task.id !== detailTask.id).map((project) => (
+                        <option key={`detail-project-${project.id}`} value={`project:${project.id}`}>项目：{project.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="task-detail-value">
+                      {detailTask.parentId !== null
+                        ? `项目 · ${tasks.find((task) => task.id === detailTask.parentId)?.name ?? '未知项目'}`
+                        : detailTask.categoryId !== null
+                          ? `分类 · ${categories.find((category) => category.id === detailTask.categoryId)?.name ?? '未知分类'}`
+                          : '未分类'}
+                    </p>
+                  )}
+                </label>
+              )}
+            </div>
+            <div className="task-detail-summary">
+              <strong>{formatDuration(detailTask.totalSeconds)}</strong>
+              <span>{detailEntries.length} 条历史记录</span>
+            </div>
+            <div className="task-detail-records">
+              <div className="panel-heading">
+                <h3>最近记录</h3>
+                <span>{detailEntries.length} 条</span>
+              </div>
+              <EntryList entries={detailEntries} visibleLimit={3} showTaskName={detailTask.kind === 'project'} />
+            </div>
+            <div className="task-detail-footer">
+              {detailEditing ? (
+                <>
+                  <button onClick={() => {
+                    setDetailName(detailTask.name)
+                    setDetailDescription(detailTask.description ?? '')
+                    setDetailAssignment(detailTask.parentId !== null
+                      ? `project:${detailTask.parentId}`
+                      : detailTask.categoryId !== null
+                        ? `category:${detailTask.categoryId}`
+                        : 'uncategorized')
+                    setDetailEditing(false)
+                  }}>取消</button>
+                  <button onClick={saveTaskDetails}><Check size={16} /> 保存修改</button>
+                </>
+              ) : (
+                <button onClick={() => setDetailEditing(true)}><Pencil size={16} /> 编辑</button>
+              )}
+              {detailTask.archived ? (
+                <button title="恢复" onClick={async () => {
+                  const restored = await run(() => api.tasks.restore(detailTask.id))
+                  if (restored) setDetailTask({ ...detailTask, archived: false })
+                }}><RotateCcw size={16} /> 恢复</button>
+              ) : (
+                <button title="归档" onClick={async () => {
+                  const archived = await run(() => api.tasks.archive(detailTask.id))
+                  if (archived) setDetailTask({ ...detailTask, archived: true })
+                }}><Archive size={16} /> 归档</button>
+              )}
+              <button className="danger-button" title="删除" onClick={() => confirmTaskRemoval(detailTask)}><Trash2 size={16} /> 删除</button>
             </div>
           </div>
         </div>
@@ -1287,14 +1372,11 @@ function HabitSummary({ icon, label, value }: { icon: React.ReactNode; label: st
   )
 }
 
-function RecentTaskList({ tasks, onStart, onManualEntry, onRename, onRemove, onArchive, onRestore }: {
+function RecentTaskList({ tasks, onStart, onManualEntry, onDetails }: {
   tasks: Task[]
   onStart: (taskId: number) => void
   onManualEntry: (task: Task) => void
-  onRename: (task: Task) => void
-  onRemove: (task: Task) => void
-  onArchive: (id: number) => void
-  onRestore: (id: number) => void
+  onDetails: (task: Task) => void
 }) {
   if (tasks.length === 0) return <Empty text="还没有最近计时任务。" />
   return (
@@ -1305,25 +1387,19 @@ function RecentTaskList({ tasks, onStart, onManualEntry, onRename, onRemove, onA
           task={task}
           onStart={onStart}
           onManualEntry={onManualEntry}
-          onRename={onRename}
-          onRemove={onRemove}
-          onArchive={onArchive}
-          onRestore={onRestore}
+          onDetails={onDetails}
         />
       ))}
     </div>
   )
 }
 
-function CategorizedTaskList({ tasks, categories, onStart, onManualEntry, onRename, onRemove, onArchive, onRestore, onCreateTask, onUpdateCategory, onRemoveCategory }: {
+function CategorizedTaskList({ tasks, categories, onStart, onManualEntry, onDetails, onCreateTask, onUpdateCategory, onRemoveCategory }: {
   tasks: Task[]
   categories: Category[]
   onStart: (taskId: number) => void
   onManualEntry: (task: Task) => void
-  onRename: (task: Task) => void
-  onRemove: (task: Task) => void
-  onArchive: (id: number) => void
-  onRestore: (id: number) => void
+  onDetails: (task: Task) => void
   onCreateTask: (categoryId: number | null) => void
   onUpdateCategory: (category: Category, name: string, color: string) => Promise<boolean>
   onRemoveCategory: (category: Category) => void
@@ -1332,7 +1408,7 @@ function CategorizedTaskList({ tasks, categories, onStart, onManualEntry, onRena
   const [editingName, setEditingName] = useState('')
   const [editingColor, setEditingColor] = useState('#3f6f68')
   const visibleCategories = categories.filter((category) => !category.archived)
-  const categoryTasks = tasks.filter((task) => task.kind === 'task' && !task.archived)
+  const categoryTasks = tasks.filter((task) => task.kind === 'task' && task.parentId === null && !task.archived)
   const groups = [
     ...visibleCategories.map((category) => ({
       id: `category-${category.id}`,
@@ -1406,10 +1482,7 @@ function CategorizedTaskList({ tasks, categories, onStart, onManualEntry, onRena
                     task={task}
                     onStart={onStart}
                     onManualEntry={onManualEntry}
-                    onRename={onRename}
-                    onRemove={onRemove}
-                    onArchive={onArchive}
-                    onRestore={onRestore}
+                    onDetails={onDetails}
                   />
                 ))}
               </div>
@@ -1421,14 +1494,11 @@ function CategorizedTaskList({ tasks, categories, onStart, onManualEntry, onRena
   )
 }
 
-function ProjectTaskList({ tasks, onStart, onManualEntry, onRename, onRemove, onArchive, onRestore, onCreateProjectTask }: {
+function ProjectTaskList({ tasks, onStart, onManualEntry, onDetails, onCreateProjectTask }: {
   tasks: Task[]
   onStart: (taskId: number) => void
   onManualEntry: (task: Task) => void
-  onRename: (task: Task) => void
-  onRemove: (task: Task) => void
-  onArchive: (id: number) => void
-  onRestore: (id: number) => void
+  onDetails: (task: Task) => void
   onCreateProjectTask: (project: Task) => void
 }) {
   const visibleTasks = tasks.filter((task) => !task.archived)
@@ -1445,10 +1515,7 @@ function ProjectTaskList({ tasks, onStart, onManualEntry, onRename, onRemove, on
           tasks={visibleTasks.filter((task) => task.parentId === project.id)}
           onStart={onStart}
           onManualEntry={onManualEntry}
-          onRename={onRename}
-          onRemove={onRemove}
-          onArchive={onArchive}
-          onRestore={onRestore}
+          onDetails={onDetails}
           onCreateProjectTask={onCreateProjectTask}
         />
       ))}
@@ -1456,15 +1523,12 @@ function ProjectTaskList({ tasks, onStart, onManualEntry, onRename, onRemove, on
   )
 }
 
-function ProjectBlock({ project, tasks, onStart, onManualEntry, onRename, onRemove, onArchive, onRestore, onCreateProjectTask }: {
+function ProjectBlock({ project, tasks, onStart, onManualEntry, onDetails, onCreateProjectTask }: {
   project: Task
   tasks: Task[]
   onStart: (taskId: number) => void
   onManualEntry: (task: Task) => void
-  onRename: (task: Task) => void
-  onRemove: (task: Task) => void
-  onArchive: (id: number) => void
-  onRestore: (id: number) => void
+  onDetails: (task: Task) => void
   onCreateProjectTask: (project: Task) => void
 }) {
   return (
@@ -1477,13 +1541,7 @@ function ProjectBlock({ project, tasks, onStart, onManualEntry, onRename, onRemo
         </div>
         <div className="item-actions">
           <button title="新建项目任务" onClick={() => onCreateProjectTask(project)}><Plus size={16} /></button>
-          <button title="编辑名称" onClick={() => onRename(project)}><Pencil size={16} /></button>
-          {project.archived ? (
-            <button title="恢复" onClick={() => onRestore(project.id)}><RotateCcw size={16} /></button>
-          ) : (
-            <button title="归档" onClick={() => onArchive(project.id)}><Archive size={16} /></button>
-          )}
-          <button title="删除" onClick={() => onRemove(project)}><Trash2 size={16} /></button>
+          <button title="查看详情" onClick={() => onDetails(project)}><Eye size={16} /></button>
         </div>
       </div>
       <div className="project-task-list">
@@ -1497,10 +1555,7 @@ function ProjectBlock({ project, tasks, onStart, onManualEntry, onRename, onRemo
               nested
               onStart={onStart}
               onManualEntry={onManualEntry}
-              onRename={onRename}
-              onRemove={onRemove}
-              onArchive={onArchive}
-              onRestore={onRestore}
+              onDetails={onDetails}
             />
           ))
         )}
@@ -1509,15 +1564,12 @@ function ProjectBlock({ project, tasks, onStart, onManualEntry, onRename, onRemo
   )
 }
 
-function TaskItem({ task, nested = false, onStart, onManualEntry, onRename, onRemove, onArchive, onRestore }: {
+function TaskItem({ task, nested = false, onStart, onManualEntry, onDetails }: {
   task: Task
   nested?: boolean
   onStart: (taskId: number) => void
   onManualEntry: (task: Task) => void
-  onRename: (task: Task) => void
-  onRemove: (task: Task) => void
-  onArchive: (id: number) => void
-  onRestore: (id: number) => void
+  onDetails: (task: Task) => void
 }) {
   return (
     <article className={`${task.archived ? 'task-item archived' : 'task-item'}${nested ? ' nested' : ''}`}>
@@ -1529,13 +1581,7 @@ function TaskItem({ task, nested = false, onStart, onManualEntry, onRename, onRe
       <div className="item-actions">
         {task.kind !== 'project' && <button title="开始" onClick={() => onStart(task.id)}><Play size={16} /></button>}
         {task.kind !== 'project' && <button title="补录" onClick={() => onManualEntry(task)}><CalendarDays size={16} /></button>}
-        <button title="编辑名称" onClick={() => onRename(task)}><Pencil size={16} /></button>
-        {task.archived ? (
-          <button title="恢复" onClick={() => onRestore(task.id)}><RotateCcw size={16} /></button>
-        ) : (
-          <button title="归档" onClick={() => onArchive(task.id)}><Archive size={16} /></button>
-        )}
-        <button title="删除" onClick={() => onRemove(task)}><Trash2 size={16} /></button>
+        <button title="查看详情" onClick={() => onDetails(task)}><Eye size={16} /></button>
       </div>
     </article>
   )
@@ -1601,10 +1647,6 @@ function ArchivePage({ tasks, timeline, onUpdateReview, onRestore, onRemove }: {
     })
   }, [archivedTasks, tasks, timeline])
   const selectedAchievement = achievements.find((item) => item.task.id === selectedArchivedTaskId) ?? null
-
-  useEffect(() => {
-    setReviewDraft(selectedAchievement?.task.archiveReview ?? '')
-  }, [selectedAchievement?.task.id, selectedAchievement?.task.archiveReview])
 
   async function saveReview() {
     if (!selectedAchievement) return
@@ -1723,7 +1765,10 @@ function ArchivePage({ tasks, timeline, onUpdateReview, onRestore, onRemove }: {
               </div>
             </div>
             <div className="item-actions">
-              <button className="archive-view-button" onClick={() => setSelectedArchivedTaskId(achievement.task.id)}><Eye size={15} /> 查看</button>
+              <button className="archive-view-button" onClick={() => {
+                setReviewDraft(achievement.task.archiveReview)
+                setSelectedArchivedTaskId(achievement.task.id)
+              }}><Eye size={15} /> 查看</button>
               <button title="恢复" onClick={() => onRestore(achievement.task.id)}><RotateCcw size={16} /></button>
               <button title="删除" onClick={() => onRemove(achievement.task)}><Trash2 size={16} /></button>
             </div>
@@ -1812,12 +1857,13 @@ function Timeline({ days, compact = false, onEdit, onRemove }: {
   )
 }
 
-function EntryList({ entries, onEdit, onRemove, visibleLimit, variant = 'default' }: {
+function EntryList({ entries, onEdit, onRemove, visibleLimit, variant = 'default', showTaskName = true }: {
   entries: TimeEntry[]
   onEdit?: (entry: TimeEntry) => void
   onRemove?: (entry: TimeEntry) => void
   visibleLimit?: number
   variant?: 'default' | 'timeline'
+  showTaskName?: boolean
 }) {
   const [showAllEntries, setShowAllEntries] = useState(false)
 
@@ -1858,9 +1904,9 @@ function EntryList({ entries, onEdit, onRemove, visibleLimit, variant = 'default
           )
         }
         return (
-          <article className="entry-item" key={entry.id}>
-            <div>
-              <strong>{entry.taskName}</strong>
+          <article className={`entry-item${onEdit || onRemove ? ' has-actions' : ''}${entry.log ? ' has-description' : ''}`} key={entry.id}>
+            <div className="entry-main">
+              {showTaskName && <strong>{entry.taskName}</strong>}
               <span>{formatTime(entry.startedAt)}-{formatTime(entry.endedAt)} · {formatDuration(entry.durationSeconds)}{entry.isManual ? ' · 补录' : ''}</span>
             </div>
             {(onEdit || onRemove) && (
@@ -1869,7 +1915,7 @@ function EntryList({ entries, onEdit, onRemove, visibleLimit, variant = 'default
                 {onRemove && <button title="删除记录" onClick={() => onRemove(entry)}><Trash2 size={16} /></button>}
               </div>
             )}
-            {entry.log && <p>{entry.log}</p>}
+            {entry.log && <p className="entry-description">{entry.log}</p>}
           </article>
         )
       })}
